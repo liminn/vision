@@ -120,7 +120,7 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
-    
+
     def __init__(self, block, layers, num_classes=1000, zero_init_residual=False,
                  groups=1, width_per_group=64, replace_stride_with_dilation=None,
                  norm_layer=None):
@@ -133,7 +133,7 @@ class ResNet(nn.Module):
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         self._norm_layer = norm_layer
-        # 时刻记录网络下一个
+        # ResNet中，每个阶段中下一个block的输入通道数，后面会时刻保持更新
         self.inplanes = 64
         self.dilation = 1
         if replace_stride_with_dilation is None:
@@ -159,7 +159,7 @@ class ResNet(nn.Module):
                                        dilate=replace_stride_with_dilation[2])
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512 * block.expansion, num_classes)
-        
+
         ### 权重初始化
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
