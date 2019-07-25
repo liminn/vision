@@ -2,11 +2,13 @@ import torch
 import torch.nn as nn
 from .utils import load_state_dict_from_url
 
-
+"""
+__all__是一个字符串list，用来定义模块中对于from XXX import *时要对外导出的符号，即要暴露的接口，
+但它只对import *起作用，对from XXX import XXX不起作用。
+"""
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
            'resnet152', 'resnext50_32x4d', 'resnext101_32x8d',
            'wide_resnet50_2', 'wide_resnet101_2']
-
 
 model_urls = {
     'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
@@ -19,7 +21,6 @@ model_urls = {
     'wide_resnet50_2': 'https://download.pytorch.org/models/wide_resnet50_2-95faca4d.pth',
     'wide_resnet101_2': 'https://download.pytorch.org/models/wide_resnet101_2-32ee1156.pth',
 }
-
 
 def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
     """3x3 convolution with padding"""
@@ -80,12 +81,15 @@ class Bottleneck(nn.Module):
         super(Bottleneck, self).__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
+        # 计算第一个1x1卷积的输出通道数，也即瓶颈层3x3卷积的通道数
+        # 疑问：如何计算的
         width = int(planes * (base_width / 64.)) * groups
         # Both self.conv2 and self.downsample layers downsample the input when stride != 1
         self.conv1 = conv1x1(inplanes, width)
         self.bn1 = norm_layer(width)
         self.conv2 = conv3x3(width, width, stride, groups, dilation)
         self.bn2 = norm_layer(width)
+        # 疑问：第二个1x1卷积的输出通道数是如何计算的
         self.conv3 = conv1x1(width, planes * self.expansion)
         self.bn3 = norm_layer(planes * self.expansion)
         self.relu = nn.ReLU(inplace=True)
@@ -116,15 +120,20 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
-
+    
     def __init__(self, block, layers, num_classes=1000, zero_init_residual=False,
                  groups=1, width_per_group=64, replace_stride_with_dilation=None,
                  norm_layer=None):
+        """
+        block: BasicBlock类或Bottleneck类
+        layers: 列表，形如[3, 4, 6, 3]，每项代表ResNet的四个阶段中每阶段里block的重复次数
+        
+        """
         super(ResNet, self).__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         self._norm_layer = norm_layer
-
+        # 时刻记录网络下一个
         self.inplanes = 64
         self.dilation = 1
         if replace_stride_with_dilation is None:
@@ -150,7 +159,8 @@ class ResNet(nn.Module):
                                        dilate=replace_stride_with_dilation[2])
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512 * block.expansion, num_classes)
-
+        
+        ### 权重初始化
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
@@ -169,12 +179,20 @@ class ResNet(nn.Module):
                     nn.init.constant_(m.bn2.weight, 0)
 
     def _make_layer(self, block, planes, blocks, stride=1, dilate=False):
+        """
+        block: BasicBlock类或Bottleneck类
+        planes: 第一个1x1卷积的输出通道数
+        blocks: 当前阶段中block重复的次数
+        stride: 给当前阶段中的第一个block施加指定步长，为1或2
+        dilate: 
+        """
         norm_layer = self._norm_layer
         downsample = None
         previous_dilation = self.dilation
         if dilate:
             self.dilation *= stride
             stride = 1
+        # 当步长不为1时，指定downsample，在block中，对x进行下采样(后再进行捷径连接)
         if stride != 1 or self.inplanes != planes * block.expansion:
             downsample = nn.Sequential(
                 conv1x1(self.inplanes, planes * block.expansion, stride),
@@ -182,8 +200,11 @@ class ResNet(nn.Module):
             )
 
         layers = []
+        # 当前阶段中的第一个block，
         layers.append(block(self.inplanes, planes, stride, downsample, self.groups,
                             self.base_width, previous_dilation, norm_layer))
+        # 更新inplanes，更新为planes * block.expansion，做为当前阶段中第二个block和第三个block的输入通道数
+        # 更新后的inplanes，也等同于第三个block的输出通道数，因此无缝衔接下阶段的_make_layer()
         self.inplanes = planes * block.expansion
         for _ in range(1, blocks):
             layers.append(block(self.inplanes, planes, groups=self.groups,
@@ -253,7 +274,7 @@ def resnet50(pretrained=False, progress=True, **kwargs):
     """
     return _resnet('resnet50', Bottleneck, [3, 4, 6, 3], pretrained, progress,
                    **kwargs)
-
+    
 
 def resnet101(pretrained=False, progress=True, **kwargs):
     r"""ResNet-101 model from
