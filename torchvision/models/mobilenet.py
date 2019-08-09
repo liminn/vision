@@ -9,7 +9,6 @@ model_urls = {
     'mobilenet_v2': 'https://download.pytorch.org/models/mobilenet_v2-b0353104.pth',
 }
 
-
 def _make_divisible(v, divisor, min_value=None):
     """
     This function is taken from the original tf repo.
@@ -29,13 +28,13 @@ def _make_divisible(v, divisor, min_value=None):
         new_v += divisor
     return new_v
 
-
 class ConvBNReLU(nn.Sequential):
     def __init__(self, in_planes, out_planes, kernel_size=3, stride=1, groups=1):
         padding = (kernel_size - 1) // 2
         super(ConvBNReLU, self).__init__(
             nn.Conv2d(in_planes, out_planes, kernel_size, stride, padding, groups=groups, bias=False),
             nn.BatchNorm2d(out_planes),
+            # 注意：激活函数采用ReLU6
             nn.ReLU6(inplace=True)
         )
 
@@ -47,6 +46,8 @@ class InvertedResidual(nn.Module):
         assert stride in [1, 2]
 
         hidden_dim = int(round(inp * expand_ratio))
+        # 注意：若步长不为1且输入输出通道数不相等，则不使用残差连接
+        # 疑问：需要self.stride == 1 and inp == oup 两个条件同时存在么？
         self.use_res_connect = self.stride == 1 and inp == oup
 
         layers = []
@@ -57,6 +58,7 @@ class InvertedResidual(nn.Module):
             # dw
             ConvBNReLU(hidden_dim, hidden_dim, stride=stride, groups=hidden_dim),
             # pw-linear
+            # 注意：此处没有激活函数，线性瓶颈层
             nn.Conv2d(hidden_dim, oup, 1, 1, 0, bias=False),
             nn.BatchNorm2d(oup),
         ])
@@ -105,6 +107,7 @@ class MobileNetV2(nn.Module):
 
         # building first layer
         input_channel = _make_divisible(input_channel * width_mult, round_nearest)
+        # MobileNet_V2与V1的区别：施加宽度乘子时，保证最后一个卷积层的通道数不变小
         self.last_channel = _make_divisible(last_channel * max(1.0, width_mult), round_nearest)
         features = [ConvBNReLU(3, input_channel, stride=2)]
         # building inverted residual blocks
@@ -140,10 +143,10 @@ class MobileNetV2(nn.Module):
 
     def forward(self, x):
         x = self.features(x)
+        # 疑问：目的是全局平均池化，但这么写是不是不太合适
         x = x.mean([2, 3])
         x = self.classifier(x)
         return x
-
 
 def mobilenet_v2(pretrained=False, progress=True, **kwargs):
     """

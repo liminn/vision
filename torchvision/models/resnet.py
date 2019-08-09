@@ -82,20 +82,20 @@ class Bottleneck(nn.Module):
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         # 计算第一个1x1卷积的输出通道数，也即瓶颈层3x3卷积的通道数
-        # 疑问：如何计算的
+        # ResNet结构，width为64；ResNext结构，width为base_width*groups，如4*32=128
         width = int(planes * (base_width / 64.)) * groups
         # Both self.conv2 and self.downsample layers downsample the input when stride != 1
         self.conv1 = conv1x1(inplanes, width)
         self.bn1 = norm_layer(width)
         self.conv2 = conv3x3(width, width, stride, groups, dilation)
         self.bn2 = norm_layer(width)
-        # 疑问：第二个1x1卷积的输出通道数是如何计算的
+        # 第二个1x1卷积的输出通道数，为planes * self.expansion
         self.conv3 = conv1x1(width, planes * self.expansion)
         self.bn3 = norm_layer(planes * self.expansion)
         self.relu = nn.ReLU(inplace=True)
         self.downsample = downsample
         self.stride = stride
-
+        
     def forward(self, x):
         identity = x
 
@@ -143,7 +143,9 @@ class ResNet(nn.Module):
         if len(replace_stride_with_dilation) != 3:
             raise ValueError("replace_stride_with_dilation should be None "
                              "or a 3-element tuple, got {}".format(replace_stride_with_dilation))
+        # ResNet结构为1，ResNext结构为32
         self.groups = groups
+        # ResNet结构为64，ResNext结构为4或8
         self.base_width = width_per_group
         self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
                                bias=False)
@@ -159,7 +161,7 @@ class ResNet(nn.Module):
                                        dilate=replace_stride_with_dilation[2])
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512 * block.expansion, num_classes)
-
+        
         ### 权重初始化
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -227,7 +229,7 @@ class ResNet(nn.Module):
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
         x = self.fc(x)
-
+        
         return x
 
 
