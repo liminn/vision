@@ -15,7 +15,7 @@ model_urls = {
     'shufflenetv2_x2.0': None,
 }
 
-
+# channel_shuffle操作
 def channel_shuffle(x, groups):
     batchsize, num_channels, height, width = x.data.size()
     channels_per_group = num_channels // groups
@@ -31,7 +31,7 @@ def channel_shuffle(x, groups):
 
     return x
 
-
+# ShuffleNetV2构建模块(这名字是不是懒得改了==)
 class InvertedResidual(nn.Module):
     def __init__(self, inp, oup, stride):
         super(InvertedResidual, self).__init__()
@@ -69,12 +69,14 @@ class InvertedResidual(nn.Module):
         return nn.Conv2d(i, o, kernel_size, stride, padding, bias=bias, groups=i)
 
     def forward(self, x):
+        # 非下采样模块
         if self.stride == 1:
             x1, x2 = x.chunk(2, dim=1)
             out = torch.cat((x1, self.branch2(x2)), dim=1)
+        # 下采样模块
         else:
             out = torch.cat((self.branch1(x), self.branch2(x)), dim=1)
-
+        # 进行channel_shuffle
         out = channel_shuffle(out, 2)
 
         return out
@@ -82,6 +84,12 @@ class InvertedResidual(nn.Module):
 
 class ShuffleNetV2(nn.Module):
     def __init__(self, stages_repeats, stages_out_channels, num_classes=1000):
+        """
+        stages_repeats：Stage2,Stage3以及Stage4中构建模块的重复次数
+                        如对于'shufflenetv2_x1.0'，应输入：[4, 8, 4]
+        stages_out_channels：Conv1/MaxPool, Stage2, Stage3, Stage3以及Conv5的输出通道数
+                             如对于'shufflenetv2_x1.0'，应输入：[24, 116, 232, 464, 1024]        
+        """
         super(ShuffleNetV2, self).__init__()
 
         if len(stages_repeats) != 3:
@@ -92,15 +100,17 @@ class ShuffleNetV2(nn.Module):
 
         input_channels = 3
         output_channels = self._stage_out_channels[0]
+        # 定义Conv1
         self.conv1 = nn.Sequential(
             nn.Conv2d(input_channels, output_channels, 3, 2, 1, bias=False),
             nn.BatchNorm2d(output_channels),
             nn.ReLU(inplace=True),
         )
+        # 更新input_channels
         input_channels = output_channels
-
+        # 定义MaxPool
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-
+        # 定义Stage2, Stage3及Stage4
         stage_names = ['stage{}'.format(i) for i in [2, 3, 4]]
         for name, repeats, output_channels in zip(
                 stage_names, stages_repeats, self._stage_out_channels[1:]):
@@ -108,8 +118,9 @@ class ShuffleNetV2(nn.Module):
             for i in range(repeats - 1):
                 seq.append(InvertedResidual(output_channels, output_channels, 1))
             setattr(self, name, nn.Sequential(*seq))
+            # 更新input_channels
             input_channels = output_channels
-
+        # 定义Conv5
         output_channels = self._stage_out_channels[-1]
         self.conv5 = nn.Sequential(
             nn.Conv2d(input_channels, output_channels, 1, 1, 0, bias=False),
