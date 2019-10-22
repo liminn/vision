@@ -13,9 +13,9 @@ model_urls = {
     'densenet121': 'https://download.pytorch.org/models/densenet121-a639ec97.pth',
     'densenet169': 'https://download.pytorch.org/models/densenet169-b2777c0a.pth',
     'densenet201': 'https://download.pytorch.org/models/densenet201-c1103571.pth',
+    # 疑问：densenet161是什么？
     'densenet161': 'https://download.pytorch.org/models/densenet161-8d451a50.pth',
 }
-
 
 def _bn_function_factory(norm, relu, conv):
     def bn_function(*inputs):
@@ -24,7 +24,6 @@ def _bn_function_factory(norm, relu, conv):
         return bottleneck_output
 
     return bn_function
-
 
 class _DenseLayer(nn.Sequential):
     def __init__(self, num_input_features, growth_rate, bn_size, drop_rate, memory_efficient=False):
@@ -54,13 +53,12 @@ class _DenseLayer(nn.Sequential):
                                      training=self.training)
         return new_features
 
-
 class _DenseBlock(nn.Module):
     def __init__(self, num_layers, num_input_features, bn_size, growth_rate, drop_rate, memory_efficient=False):
         super(_DenseBlock, self).__init__()
         for i in range(num_layers):
             layer = _DenseLayer(
-                num_input_features + i * growth_rate,
+                num_input_features + i * growth_rate, # 在_DenseBlock里，每一层的输入会逐渐增加growth_rate个通道
                 growth_rate=growth_rate,
                 bn_size=bn_size,
                 drop_rate=drop_rate,
@@ -70,6 +68,7 @@ class _DenseBlock(nn.Module):
 
     def forward(self, init_features):
         features = [init_features]
+        # 实现_DenseBlock内特征的不断串联
         for name, layer in self.named_children():
             new_features = layer(*features)
             features.append(new_features)
@@ -158,7 +157,7 @@ class DenseNet(nn.Module):
         out = torch.flatten(out, 1)
         out = self.classifier(out)
         return out
-
+        
 
 def _load_state_dict(model, model_url, progress):
     # '.'s are no longer allowed in module names, but previous _DenseLayer
@@ -231,7 +230,7 @@ def densenet169(pretrained=False, progress=True, **kwargs):
 def densenet201(pretrained=False, progress=True, **kwargs):
     r"""Densenet-201 model from
     `"Densely Connected Convolutional Networks" <https://arxiv.org/pdf/1608.06993.pdf>`_
-
+    
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
