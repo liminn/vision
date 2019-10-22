@@ -444,7 +444,8 @@ class RoIHeads(torch.nn.Module):
 
     def select_training_samples(self, proposals, targets):
         self.check_targets(targets)
-        gt_boxes = [t["boxes"] for t in targets]
+        dtype = proposals[0].dtype
+        gt_boxes = [t["boxes"].to(dtype) for t in targets]
         gt_labels = [t["labels"] for t in targets]
 
         # append ground-truth bboxes to propos
@@ -476,8 +477,13 @@ class RoIHeads(torch.nn.Module):
         pred_scores = F.softmax(class_logits, -1)
 
         # split boxes and scores per image
-        pred_boxes = pred_boxes.split(boxes_per_image, 0)
-        pred_scores = pred_scores.split(boxes_per_image, 0)
+        if len(boxes_per_image) == 1:
+            # TODO : remove this when ONNX support dynamic split sizes
+            pred_boxes = (pred_boxes,)
+            pred_scores = (pred_scores,)
+        else:
+            pred_boxes = pred_boxes.split(boxes_per_image, 0)
+            pred_scores = pred_scores.split(boxes_per_image, 0)
 
         all_boxes = []
         all_scores = []
@@ -496,8 +502,8 @@ class RoIHeads(torch.nn.Module):
 
             # batch everything, by making every class prediction be a separate instance
             boxes = boxes.reshape(-1, 4)
-            scores = scores.flatten()
-            labels = labels.flatten()
+            scores = scores.reshape(-1)
+            labels = labels.reshape(-1)
 
             # remove low scoring boxes
             inds = torch.nonzero(scores > self.score_thresh).squeeze(1)

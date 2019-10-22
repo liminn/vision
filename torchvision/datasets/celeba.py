@@ -3,7 +3,7 @@ import torch
 import os
 import PIL
 from .vision import VisionDataset
-from .utils import download_file_from_google_drive, check_integrity
+from .utils import download_file_from_google_drive, check_integrity, verify_str_arg
 
 
 class CelebA(VisionDataset):
@@ -21,7 +21,7 @@ class CelebA(VisionDataset):
                 ``bbox`` (np.array shape=(4,) dtype=int): bounding box (x, y, width, height)
                 ``landmarks`` (np.array shape=(10,) dtype=int): landmark points (lefteye_x, lefteye_y, righteye_x,
                     righteye_y, nose_x, nose_y, leftmouth_x, leftmouth_y, rightmouth_x, rightmouth_y)
-            Defaults to ``attr``.
+            Defaults to ``attr``. If empty, ``None`` will be returned as target.
         transform (callable, optional): A function/transform that  takes in an PIL image
             and returns a transformed version. E.g, ``transforms.ToTensor``
         target_transform (callable, optional): A function/transform that takes in the
@@ -59,6 +59,9 @@ class CelebA(VisionDataset):
         else:
             self.target_type = [target_type]
 
+        if not self.target_type and self.target_transform is not None:
+            raise RuntimeError('target_transform is specified but target_type is empty')
+
         if download:
             self.download()
 
@@ -66,17 +69,14 @@ class CelebA(VisionDataset):
             raise RuntimeError('Dataset not found or corrupted.' +
                                ' You can use download=True to download it')
 
-        if split.lower() == "train":
-            split = 0
-        elif split.lower() == "valid":
-            split = 1
-        elif split.lower() == "test":
-            split = 2
-        elif split.lower() == "all":
-            split = None
-        else:
-            raise ValueError('Wrong split entered! Please use "train", '
-                             '"valid", "test", or "all"')
+        split_map = {
+            "train": 0,
+            "valid": 1,
+            "test": 2,
+            "all": None,
+        }
+        split = split_map[verify_str_arg(split.lower(), "split",
+                                         ("train", "valid", "test", "all"))]
 
         fn = partial(os.path.join, self.root, self.base_folder)
         splits = pandas.read_csv(fn("list_eval_partition.txt"), delim_whitespace=True, header=None, index_col=0)
@@ -134,14 +134,19 @@ class CelebA(VisionDataset):
             elif t == "landmarks":
                 target.append(self.landmarks_align[index, :])
             else:
+                # TODO: refactor with utils.verify_str_arg
                 raise ValueError("Target type \"{}\" is not recognized.".format(t))
-        target = tuple(target) if len(target) > 1 else target[0]
 
         if self.transform is not None:
             X = self.transform(X)
 
-        if self.target_transform is not None:
-            target = self.target_transform(target)
+        if target:
+            target = tuple(target) if len(target) > 1 else target[0]
+
+            if self.target_transform is not None:
+                target = self.target_transform(target)
+        else:
+            target = None
 
         return X, target
 
